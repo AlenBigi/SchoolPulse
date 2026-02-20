@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SchoolPulse - Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1B4332',
+                        accent: '#52B788',
+                        warning: '#F59E0B',
+                        danger: '#EF4444',
+                        background: '#F9FAFB'
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="css/styles.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- heatmap.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/heatmap.js/2.0.2/heatmap.min.js"></script>
+
+    <!-- AWS Cognito SDK -->
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1354.0.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.1.2/dist/amazon-cognito-identity.min.js"></script>
+</head>
+
+<body class="bg-background min-h-screen font-sans flex text-gray-800">
+
+    <!-- Sidebar Navigation -->
+    <aside
+        class="w-64 bg-primary text-white min-h-screen flex flex-col transition-all duration-300 transform md:translate-x-0 -translate-x-full fixed md:relative z-50 shadow-xl"
+        id="sidebar">
+        <div class="p-6">
+            <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                <svg class="w-8 h-8 text-accent" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 2a8 8 0 100 16 8 8 0 000-16zM9 11.5a1.5 1.5 0 112 0v-5a1.5 1.5 0 11-2 0v5z" />
+                </svg>
+                SchoolPulse
+            </h1>
+            <p class="text-accent text-xs mt-1 uppercase tracking-wider font-semibold">Sustainability Platform</p>
+        </div>
+
+        <nav class="flex-1 px-4 space-y-2 mt-4 overflow-y-auto" id="navLinks">
+            <!-- Nav links generated based on role -->
+        </nav>
+
+        <div class="p-4 border-t border-[#122e22]">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-primary font-bold"
+                    id="userInitial">U</div>
+                <div class="text-sm">
+                    <p class="font-medium" id="userEmail">Loading...</p>
+                    <p class="text-xs text-gray-300" id="userRole">Role</p>
+                </div>
+            </div>
+            <button onclick="window.Auth.logout()"
+                class="w-full text-left px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-[#122e22] rounded-lg transition-colors flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign Out
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col min-h-screen overflow-hidden">
+        <!-- Top bar (Mobile toggle + breadcrumbs) -->
+        <header class="bg-white shadow-sm h-16 flex items-center justify-between px-6 z-10">
+            <div class="flex items-center gap-4">
+                <button id="mobileMenuBtn" class="md:hidden text-gray-500 hover:text-primary">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+                <h2 class="text-xl font-semibold text-gray-800" id="pageTitle">Dashboard</h2>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <button class="relative p-2 text-gray-400 hover:text-primary transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    <span class="absolute top-1 right-1 w-2.5 h-2.5 bg-danger rounded-full ring-2 ring-white"></span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dynamic Content Area -->
+        <div class="flex-1 overflow-auto p-6 relative">
+
+            <!-- Toast Container -->
+            <div id="toastContainer" class="fixed top-20 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+            <!-- Loader Wrapper -->
+            <div id="loader"
+                class="absolute inset-0 bg-background/80 flex items-center justify-center z-40 hidden backdrop-blur-sm">
+                <div class="flex gap-2">
+                    <div class="w-3 h-3 bg-accent rounded-full animate-bounce" style="animation-delay: 0s"></div>
+                    <div class="w-3 h-3 bg-accent rounded-full animate-bounce" style="animation-delay: 0.1s"></div>
+                    <div class="w-3 h-3 bg-accent rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                </div>
+            </div>
+
+            <div id="moduleContent" class="space-y-6 pulse-entrance">
+                <!-- Module views will be injected here by JS router -->
+            </div>
+        </div>
+    </main>
+
+    <!-- App Logic -->
+    <script src="js/app.js"></script>
+    <script src="js/router.js"></script>
+    <script src="js/modules/energy.js"></script>
+    <script src="js/modules/water.js"></script>
+    <script src="js/modules/waste.js"></script>
+    <script src="js/modules/events.js"></script>
+    <script src="js/modules/pledges.js"></script>
+    <script src="js/modules/dashboard.js"></script>
+    <script src="js/modules/reports.js"></script>
+
+    <!-- Init scripts -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Require Auth
+            if (!window.Auth || !window.Auth.isAuthenticated()) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Populate UI
+            const role = window.Auth.getRole();
+            const token = window.Auth.getToken();
+
+            document.getElementById('userRole').innerText = role || 'User';
+            document.getElementById('userEmail').innerText = window.Auth.getEmail() || 'User';
+
+            // Generate Nav based on role
+            window.Router.initNav(role);
+            window.Router.navigate('dashboard');
+
+            // Mobile Menu toggle
+            const sidebar = document.getElementById('sidebar');
+            document.getElementById('mobileMenuBtn').addEventListener('click', () => {
+                sidebar.classList.toggle('-translate-x-full');
+            });
+        });
+    </script>
+</body>
+
+</html>

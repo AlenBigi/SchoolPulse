@@ -1,0 +1,451 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SchoolPulse Serverless Application
+
+Globals:
+  Function:
+    Timeout: 10
+    Runtime: nodejs18.x
+    Architectures:
+      - x86_64
+  Api:
+    Cors:
+      AllowMethods: "'GET,POST,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'*'" # Restrict this in production
+
+Parameters:
+  ExistingSNSArn:
+    Type: String
+    Default: "arn:aws:sns:ap-south-1:475568919618:schoolpulse-alerts"
+  ReportsBucketName:
+    Type: String
+    Default: "schoolpulse-reports"
+
+Resources:
+  # ==========================================
+  # Cognito User Pool & Clients
+  # ==========================================
+  SchoolPulseUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: SchoolPulseUsers
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+
+  SchoolPulseUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref SchoolPulseUserPool
+      ClientName: SchoolPulseWebClient
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # User Groups
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Principal
+      UserPoolId: !Ref SchoolPulseUserPool
+      Description: Principal / Admin - full access
+      
+  FacilityGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: FacilityManager
+      UserPoolId: !Ref SchoolPulseUserPool
+      
+  TeacherGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: EventOrganizer
+      UserPoolId: !Ref SchoolPulseUserPool
+
+  StaffGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: WasteStaff
+      UserPoolId: !Ref SchoolPulseUserPool
+
+  StudentGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Student
+      UserPoolId: !Ref SchoolPulseUserPool
+
+  # ==========================================
+  # API Gateway REST API
+  # ==========================================
+  SchoolPulseApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt SchoolPulseUserPool.Arn
+
+# ==========================================
+  # SNS Topic for Alerts
+  # ==========================================
+#   AlertsTopic:
+#     Type: AWS::SNS::Topic
+#     Properties:
+#       DisplayName: SchoolPulse Alerts
+
+  # ==========================================
+  # DynamoDB Tables
+  # ==========================================
+  EnergyReadingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: EnergyReadings
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  WaterReadingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: WaterReadings
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  EventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Events
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  ZoneDensityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ZoneDensity
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  WasteLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: WasteLogs
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  PledgesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Pledges
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  # ==========================================
+  # Timestream Database & Tables
+  # ==========================================
+  SchoolPulseTimestreamDB:
+    Type: AWS::Timestream::Database
+    Properties:
+      DatabaseName: SchoolPulseTimeSeries
+
+  TimestreamEnergyTable:
+    Type: AWS::Timestream::Table
+    Properties:
+      DatabaseName: !Ref SchoolPulseTimestreamDB
+      TableName: Energy
+      RetentionProperties:
+        MemoryStoreRetentionPeriodInHours: 24
+        MagneticStoreRetentionPeriodInDays: 365
+
+  # ==========================================
+  # Lambda Functions
+  # ==========================================
+  EnergyLoggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: energyLogger.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref EnergyReadingsTable
+          EVENTS_TABLE: !Ref EventsTable
+          SNS_TOPIC_ARN: !Ref ExistingSNSArn
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EnergyReadingsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref EventsTable
+        - SNSPublishMessagePolicy:
+            TopicName: "schoolpulse-alerts" # Derived from your ARN name
+      Events:
+        PostReading:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /readings
+            Method: POST
+        GetReadings:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /readings
+            Method: GET
+
+  WaterLoggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: waterLogger.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref WaterReadingsTable
+          EVENTS_TABLE: !Ref EventsTable
+          SNS_TOPIC_ARN: !Ref AlertsTopic
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WaterReadingsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref EventsTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt AlertsTopic.TopicName
+      Events:
+        PostReading:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /water
+            Method: POST
+        GetReadings:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /water
+            Method: GET
+
+  WasteLoggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: wasteLogger.handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref WasteLogsTable
+          EVENTS_TABLE: !Ref EventsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WasteLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref EventsTable
+      Events:
+        PostReading:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /waste
+            Method: POST
+        GetReadings:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /waste
+            Method: GET
+
+  EventManagerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: eventManager.handler
+      Environment:
+        Variables:
+          EVENTS_TABLE: !Ref EventsTable
+          ZONE_DENSITY_TABLE: !Ref ZoneDensityTable
+          SNS_TOPIC_ARN: !Ref AlertsTopic
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EventsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ZoneDensityTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt AlertsTopic.TopicName
+      Events:
+        PostEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /events
+            Method: POST
+        PostZoneHeadcount:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /events/{id}/zones
+            Method: POST
+        GetZones:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /events/{id}/zones
+            Method: GET
+
+  PledgeManagerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: pledgeManager.handler
+      Environment:
+        Variables:
+          PLEDGES_TABLE: !Ref PledgesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PledgesTable
+      Events:
+        PostPledge:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /pledges
+            Method: POST
+        GetLeaderboard:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /pledges/leaderboard
+            Method: GET
+
+  DashboardAggregatorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: dashboardAggregator.handler
+      Environment:
+        Variables:
+          ENERGY_TABLE: !Ref EnergyReadingsTable
+          WATER_TABLE: !Ref WaterReadingsTable
+          WASTE_TABLE: !Ref WasteLogsTable
+          EVENTS_TABLE: !Ref EventsTable
+          PLEDGES_TABLE: !Ref PledgesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref EnergyReadingsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref WaterReadingsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref WasteLogsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref EventsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PledgesTable
+      Events:
+        GetDashboard:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /dashboard
+            Method: GET
+
+  CarbonCalculatorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: carbonCalculator.handler
+      Environment:
+        Variables:
+          ENERGY_TABLE: !Ref EnergyReadingsTable
+          WATER_TABLE: !Ref WaterReadingsTable
+          WASTE_TABLE: !Ref WasteLogsTable
+          REPORTS_BUCKET: !Ref ReportsBucketName
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref EnergyReadingsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref WaterReadingsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref WasteLogsTable
+        - S3CrudPolicy:
+            BucketName: !Ref ReportsBucketName
+      Events:
+        GetCarbon:
+          Type: Api
+          Properties:
+            RestApiId: !Ref SchoolPulseApi
+            Path: /carbon
+            Method: GET
+
+Outputs:
+  Region:
+    Description: "AWS Region"
+    Value: !Ref "AWS::Region"
+  ApiUrl:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${SchoolPulseApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  UserPoolId:
+    Description: "Cognito User Pool ID"
+    Value: !Ref SchoolPulseUserPool
+  UserPoolClientId:
+    Description: "Cognito User Pool Client ID"
+    Value: !Ref SchoolPulseUserPoolClient

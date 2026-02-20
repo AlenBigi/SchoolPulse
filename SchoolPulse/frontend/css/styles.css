@@ -1,0 +1,103 @@
+/* 
+  Custom CSS for SchoolPulse 
+  Extends Tailwind styles with custom animations and utilities
+*/
+
+:root {
+  --color-primary: #1B4332;
+  --color-accent: #52B788;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+  --color-bg: #F9FAFB;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #374151;
+  background-color: var(--color-bg);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Animations */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pulse-entrance {
+  animation: slideUp 0.5s ease-out forwards;
+}
+
+/* Custom Scrollbar for a premium feel */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Gauge specific CSS */
+.gauge-container {
+  position: relative;
+  width: 200px;
+  height: 100px;
+  overflow: hidden;
+  margin: 0 auto;
+}
+.gauge-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200px;
+  height: 200px;
+  background-color: #E5E7EB;
+  border-radius: 50%;
+  clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%);
+}
+.gauge-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200px;
+  height: 200px;
+  background-color: var(--color-accent);
+  border-radius: 50%;
+  clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%);
+  transform-origin: center center;
+  transform: rotate(180deg); /* 180 to 360 */
+  transition: transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.gauge-center {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 160px;
+  height: 160px;
+  background-color: white;
+  border-radius: 50%;
+  clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+.gauge-score {
+  margin-top: -30px;
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--color-primary);
+}
